@@ -1,0 +1,53 @@
+import numpy as np
+
+class PSO:
+    def __init__(self, objective_func, bounds, n_particles=50, max_iter=100, w=0.7, c1=1.5, c2=1.5):
+        self.objective_func = objective_func
+        self.bounds = np.array(bounds)
+        self.n_particles = n_particles
+        self.gbest_score_history = []
+        self.max_iter = max_iter
+        self.w = w  # коэффициент инерции
+        self.c1 = c1  # когнитивный коэффициент
+        self.c2 = c2  # социальный коэффициент
+        
+        # Инициализация частиц
+        self.dim = len(bounds)
+        self.X = np.random.uniform(low=self.bounds[:, 0], high=self.bounds[:, 1], 
+                                  size=(self.n_particles, self.dim))
+        self.V = np.random.uniform(low=-1, high=1, size=(self.n_particles, self.dim))
+        
+        # Лучшие позиции
+        self.pbest = self.X.copy()
+        self.pbest_scores = np.array([self.objective_func(x) for x in self.X])
+        self.gbest = self.pbest[np.argmin(self.pbest_scores)]
+        self.gbest_score = np.min(self.pbest_scores)
+        
+    def optimize(self):
+        for _ in range(self.max_iter):
+            # Обновление скоростей
+            r1, r2 = np.random.rand(), np.random.rand()
+            self.V = (self.w * self.V + 
+                     self.c1 * r1 * (self.pbest - self.X) + 
+                     self.c2 * r2 * (self.gbest - self.X))
+            
+            # Обновление позиций
+            self.X = self.X + self.V
+            
+            # Проверка границ
+            for i in range(self.dim):
+                self.X[:, i] = np.clip(self.X[:, i], self.bounds[i, 0], self.bounds[i, 1])
+            
+            # Обновление лучших позиций
+            scores = np.array([self.objective_func(x) for x in self.X])
+            improved_indices = scores < self.pbest_scores
+            self.pbest[improved_indices] = self.X[improved_indices]
+            self.pbest_scores[improved_indices] = scores[improved_indices]
+            
+            if np.min(scores) < self.gbest_score:
+                self.gbest = self.X[np.argmin(scores)]
+                self.gbest_score = np.min(scores)
+            self.gbest_score_history.append(self.gbest_score)
+
+                
+        return self.gbest, self.gbest_score
