@@ -1,0 +1,166 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import time
+from scipy.optimize import minimize
+from geneticalgorithm import geneticalgorithm as ga
+
+# Тестовые функции
+def sphere(x):
+    return np.sum(x**2)
+
+def rosenbrock(x):
+    return sum(100*(x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2)
+
+def rastrigin(x):
+    return 10*len(x) + sum(x**2 - 10*np.cos(2*np.pi*x))
+
+# Методы оптимизации
+def gradient_descent(func, x0, bounds):
+    result = minimize(func, x0, method='L-BFGS-B', 
+                     bounds=bounds, tol=1e-6)
+    return result.x, result.fun
+
+def ga_optimizer(func, bounds, pop_size=100):
+    varbounds = np.array(bounds)
+    algorithm_param = {'max_num_iteration': 1000,
+                      'population_size': pop_size,
+                      'mutation_probability': 0.1,
+                      'elit_ratio': 0.01,
+                      'crossover_probability': 0.8,
+                      'parents_portion': 0.3}
+    model = ga(function=func, 
+              dimension=len(bounds),
+              variable_type='real',
+              variable_boundaries=varbounds,
+              algorithm_parameters=algorithm_param)
+    model.run()
+    return model.output_dict['variable'], model.output_dict['function']
+
+# Параметры тестирования
+bounds_2d = [(-5, 5), (-5, 5)]
+bounds_5d = [(-5, 5)]*5
+test_functions = [sphere, rosenbrock, rastrigin]
+func_names = ["Sphere", "Rosenbrock", "Rastrigin"]
+dimensions = [2, 5]
+
+# Параметры алгоритмов
+n_runs = 5  # Уменьшено для скорости демонстрации
+max_iter = 100
+n_particles = 50
+n_ants = 50
+
+# Результаты
+methods = ["PSO", "ACO", "GD", "GA"]
+results = {method: {"time": [], "score": [], "convergence": []} for method in methods}
+
+def run_tests():
+    for func, name in zip(test_functions, func_names):
+        print(f"\nTesting {name} function:")
+        
+        for dim in dimensions:
+            print(f"\nDimension: {dim}D")
+            bounds = [(-5, 5)]*dim
+            
+            # Инициализация начальной точки для GD
+            x0 = np.random.uniform(low=-5, high=5, size=dim)
+            
+            # Тестирование всех методов
+            for method in methods:
+                times = []
+                scores = []
+                convergence = []
+                
+                for _ in range(n_runs):
+                    start = time.time()
+                    
+                    if method == "PSO":
+                        optimizer = PSO(func, bounds, n_particles, max_iter)
+                        best_pos, best_score = optimizer.optimize()
+                        conv = optimizer.gbest_score_history
+                    elif method == "ACO":
+                        optimizer = ACO(func, bounds, n_ants, max_iter)
+                        best_pos, best_score = optimizer.optimize()
+                        conv = optimizer.best_score_history
+                    elif method == "GD":
+                        best_pos, best_score = gradient_descent(func, x0, bounds)
+                        conv = [best_score]  # Для GD нет истории сходимости
+                    elif method == "GA":
+                        best_pos, best_score = ga_optimizer(func, bounds)
+                        conv = [best_score]  # Для GA нет истории сходимости
+                    
+                    times.append(time.time() - start)
+                    scores.append(best_score)
+                    convergence.append(conv)
+                
+                # Усреднение результатов
+                avg_time = np.mean(times)
+                avg_score = np.mean(scores)
+                
+                # Для методов с историей сходимости
+                if method in ["PSO", "ACO"]:
+                    max_len = max(len(c) for c in convergence)
+                    padded = [np.pad(c, (0, max_len - len(c)), mode='edge') 
+                             for c in convergence]
+                    avg_convergence = np.mean(padded, axis=0)
+                else:
+                    avg_convergence = [avg_score]*max_iter
+                
+                # Сохранение результатов
+                results[method]["time"].append(avg_time)
+                results[method]["score"].append(avg_score)
+                results[method]["convergence"].append(avg_convergence)
+                
+                print(f"{method} - Avg Time: {avg_time:.4f}s, Avg Score: {avg_score:.4f}")
+
+def plot_results():
+    # Графики сходимости
+    plt.figure(figsize=(15, 10))
+    for i, (func, name) in enumerate(zip(test_functions, func_names)):
+        for j, dim in enumerate(dimensions):
+            idx = i*len(dimensions) + j
+            plt.subplot(len(test_functions), len(dimensions), idx+1)
+            
+            for method in methods:
+                plt.plot(results[method]["convergence"][idx], label=method)
+            
+            plt.title(f"{name} {dim}D")
+            plt.xlabel("Iteration")
+            plt.ylabel("Best Score")
+            plt.legend()
+            plt.grid()
+            plt.yscale('log')  # Логарифмическая шкала для наглядности
+    
+    plt.tight_layout()
+    plt.savefig("convergence_comparison.png")
+    plt.show()
+    
+    # Сравнение времени и точности
+    metrics = ["time", "score"]
+    for metric in metrics:
+        plt.figure(figsize=(10, 6))
+        
+        x = np.arange(len(test_functions)*len(dimensions))
+        width = 0.2
+        
+        for i, method in enumerate(methods):
+            offset = width * (i - len(methods)/2 + 0.5)
+            plt.bar(x + offset, results[method][metric], width, label=method)
+        
+        labels = [f"{name} {dim}D" for name in func_names for dim in dimensions]
+        plt.xticks(x, labels, rotation=45)
+        plt.ylabel(metric.capitalize())
+        plt.title(f"Optimization Methods Comparison by {metric.capitalize()}")
+        plt.legend()
+        plt.grid(True, axis='y')
+        plt.tight_layout()
+        plt.savefig(f"{metric}_comparison.png")
+        plt.show()
+
+if __name__ == "__main__":
+    run_tests()
+    plot_results()
+    
+    # Сохранение результатов в файл
+    import json
+    with open("optimization_results_comparison.json", "w") as f:
+        json.dump(results, f, indent=4)
