@@ -1,0 +1,65 @@
+import numpy as np
+
+class ACO:
+    def __init__(self, objective_func, bounds, n_ants=50, max_iter=100,
+                 alpha=1, beta=3, rho=0.1, Q=1.0):
+        self.objective_func = objective_func
+        self.bounds = np.array(bounds)
+        self.n_ants = n_ants
+        self.max_iter = max_iter
+        self.alpha = alpha
+        self.beta = beta
+        self.rho = rho
+        self.Q = Q
+        self.dim = len(bounds)
+
+        # Инициализация истории сходимости
+        self.best_score_history = []
+        self.best_solution_history = []
+
+        # Инициализация феромонов (исправленная версия)
+        self.n_points = 100  # Количество точек на измерение
+        self.tau = np.ones((self.dim, self.n_points))  # Матрица феромонов
+
+    def _generate_solution(self):
+        solution = []
+        for d in range(self.dim):
+            values = np.linspace(self.bounds[d, 0], self.bounds[d, 1], self.n_points)
+            probabilities = self.tau[d] ** self.alpha
+            probabilities /= probabilities.sum()
+            val = np.random.choice(values, p=probabilities)
+            solution.append(val)
+        return np.array(solution)
+
+    def optimize(self):
+        best_solution = None
+        best_score = float('inf')
+
+        for _ in range(self.max_iter):
+            solutions = []
+            scores = []
+
+            for _ in range(self.n_ants):
+                solution = self._generate_solution()
+                score = self.objective_func(solution)
+                solutions.append(solution)
+                scores.append(score)
+
+                if score < best_score:
+                    best_solution = solution.copy()
+                    best_score = score
+
+            # Сохраняем историю сходимости
+            self.best_score_history.append(best_score)
+            self.best_solution_history.append(best_solution)
+
+            # Обновление феромонов
+            delta_tau = np.zeros_like(self.tau)
+            for sol, score in zip(solutions, scores):
+                for d in range(self.dim):
+                    idx = np.argmin(np.abs(np.linspace(self.bounds[d, 0], self.bounds[d, 1], self.n_points) - sol[d]))
+                    delta_tau[d, idx] += self.Q / (score + 1e-10)
+
+            self.tau = (1 - self.rho) * self.tau + delta_tau
+
+        return best_solution, best_score
